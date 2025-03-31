@@ -1,7 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/google/uuid"
 )
 
 func (cfg apiConfig) ensureAssetsDir() error {
@@ -9,4 +14,25 @@ func (cfg apiConfig) ensureAssetsDir() error {
 		return os.Mkdir(cfg.assetsRoot, 0755)
 	}
 	return nil
+}
+
+func getAssetPath(id uuid.UUID, mediaType string) string {
+	ext := mediaTypeToExtension(mediaType)
+	return fmt.Sprintf("%s%s", id, ext)
+}
+
+func (cfg apiConfig) getAssetDiskPath(filename string) string {
+	return filepath.Join(cfg.assetsRoot, filename)
+}
+
+func (cfg apiConfig) getAssetURL(filename string) string {
+	return fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, filename)
+}
+
+func mediaTypeToExtension(mediaType string) string {
+	parts := strings.Split(mediaType, "/")
+	if len(parts) != 2 {
+		return ".bin"
+	}
+	return "." + parts[1]
 }
