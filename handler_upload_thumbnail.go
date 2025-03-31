@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 
@@ -42,7 +43,16 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer file.Close()
-	mediaType := header.Header.Get("Content-Type")
+
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Media type can't be parsed", err)
+		return
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Only accepts image/png or image/jpeg", nil)
+		return
+	}
 
 	videoDb, err := cfg.db.GetVideo(videoID)
 	if err != nil {
