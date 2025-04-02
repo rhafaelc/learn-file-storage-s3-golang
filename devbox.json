@@ -4,7 +4,8 @@
     "go":      "latest",
     "delve":   "latest",
     "sqlite":  "latest",
-    "awscli2": "latest"
+    "awscli2": "latest",
+    "ffmpeg":  "latest"
   },
   "env": {
     "GOPATH": "$PWD/../go",
