@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,10 +12,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -138,14 +142,59 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	videoURL := cfg.getObjectURL(key)
+	videoURL := fmt.Sprintf("%s,%s", cfg.s3Bucket, key)
 	videoDb.VideoURL = &videoURL
 
 	if err := cfg.db.UpdateVideo(videoDb); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update video", err)
 		return
 	}
-	respondWithJSON(w, http.StatusOK, nil)
+
+	presignedVideo, err := cfg.dbVideoToSignedVideo(videoDb)
+	if err != nil {
+		respondWithError(
+			w,
+			http.StatusInternalServerError,
+			"Couldn't generate presigned video url",
+			err,
+		)
+		return
+	}
+	respondWithJSON(w, http.StatusOK, presignedVideo)
+}
+
+func generatePresignedURL(
+	s3Client *s3.Client,
+	bucket, key string,
+	expireTime time.Duration,
+) (string, error) {
+	presignClient := s3.NewPresignClient(s3Client)
+	obj, err := presignClient.PresignGetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(expireTime))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned url: %v", err)
+	}
+
+	return obj.URL, nil
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	parts := strings.Split(*video.VideoURL, ",")
+	if len(parts) != 2 {
+		return video, nil
+	}
+	bucket := parts[0]
+	key := parts[1]
+
+	presignedURL, err := generatePresignedURL(cfg.s3Client, bucket, key, 5*time.Minute)
+	if err != nil {
+		return database.Video{}, err
+	}
+
+	video.VideoURL = &presignedURL
+	return video, nil
 }
 
 func processVideoForFastStart(filepath string) (string, error) {
